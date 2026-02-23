@@ -57,6 +57,8 @@ EXECUTOR = ThreadPoolExecutor(
 
 # 🔑 Bot tokeningizni shu yerga qo'ying
 BOT_TOKEN = "8331919528:AAEZJCdO6fV31NVnJ9eZacf-rJrEw3HtSww"
+# ✅ SHAZAM SERVICE URL
+SHAZAM_SERVICE_URL = "https://shazam-serviceasliddin-u52r.onrender.com/recognize"
 
 # STORAGE GROUP (BOT XOTIRASI)
 STORAGE_GROUP_ID = -1003831196510
@@ -1610,40 +1612,50 @@ async def extract_audio_from_video(video_path: Path) -> Optional[Path]:
     return None
 
 async def recognize_music(file_path: Path) -> Optional[RecognitionResult]:
-    """Musiqani aniqlash (Shazam)"""
-    if not SHAZAM_AVAILABLE or not shazam:
-        return None
+    """Render Shazam service orqali aniqlash"""
 
     try:
-        result = await shazam.recognize(str(file_path))
 
-        if result and 'track' in result:
-            track = result['track']
+        async with aiohttp.ClientSession() as session:
 
-            # Album ma'lumotini olish
-            album = "Noma'lum"
-            sections = track.get('sections', [])
-            for section in sections:
-                if section.get('type') == 'SONG':
-                    metadata = section.get('metadata', [])
-                    for meta in metadata:
-                        if meta.get('title') == 'Album':
-                            album = meta.get('text', "Noma'lum")
-                            break
+            with open(file_path, "rb") as f:
 
-            return RecognitionResult(
-                title=track.get('title', "Noma'lum"),
-                artist=track.get('subtitle', "Noma'lum"),
-                album=album,
-                genre=track.get('genres', {}).get('primary', "Noma'lum"),
-                cover_url=track.get('images', {}).get('coverart'),
-                shazam_url=track.get('url')
-            )
+                data = aiohttp.FormData()
+
+                data.add_field(
+                    "file",
+                    f,
+                    filename="audio.mp3",
+                    content_type="audio/mpeg"
+                )
+
+                async with session.post(
+                    SHAZAM_SERVICE_URL,
+                    data=data
+                ) as resp:
+
+                    if resp.status != 200:
+                        return None
+
+                    result = await resp.json()
+
+        if not result:
+            return None
+
+        return RecognitionResult(
+            title=result.get("title", "Noma'lum"),
+            artist=result.get("artist", "Noma'lum"),
+            album=result.get("album", "Noma'lum"),
+            genre=result.get("genre", "Noma'lum"),
+            cover_url=result.get("cover"),
+            shazam_url=result.get("url")
+        )
+
     except Exception as e:
-        logger.error(f"Musiqa aniqlash xatosi: {e}")
 
-    return None
+        logger.error(f"Shazam service xatosi: {e}")
 
+        return None
 
 # ╔════════════════ DOWNLOAD QUEUE WORKER ════════════════╗
 
